@@ -2,14 +2,17 @@ mod args;
 mod error;
 mod huffman;
 
+use core::str;
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
 
 use args::Args;
 use error::Error;
 use huffman::HuffmanTree;
+
+type FreqTable = HashMap<char, u32>;
 
 fn usage() {
     eprintln!("Usage: huffman [COMMAND] <filename>");
@@ -29,19 +32,22 @@ fn main() {
         }
     };
 
-    match run(args) {
-        Ok(s) => {
-            println!("{}", s);
-            exit(0);
-        }
-        Err(e) => {
-            eprintln!("Error : {}", e);
-            exit(1);
-        }
+    match args.mode {
+        args::Mode::Compress => match encode(args) {
+            Ok(s) => {
+                println!("{}", s);
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("Error : {}", e);
+                exit(1);
+            }
+        },
+        args::Mode::Uncompress => todo!(),
     }
 }
 
-fn run(args: Args) -> Result<String, Error> {
+fn encode(args: Args) -> Result<String, Error> {
     let freqs = get_frequencies(&args)?;
     let huffman_tree = if let Some(t) = huffman::HuffmanTree::build_huffman(freqs.clone()) {
         t
@@ -100,12 +106,12 @@ fn run(args: Args) -> Result<String, Error> {
     Ok("Ok".to_string())
 }
 
-fn write_header(filename: String, freqs: HashMap<char, i32>) -> Result<(), Error> {
+fn write_header(filename: String, freqs: FreqTable) -> Result<(), Error> {
     let mut freq_bytes: Vec<u8> = Vec::new();
     for (c, f) in freqs {
         let mut buf = [0; 4];
         let encoded_char = c.encode_utf8(&mut buf);
-        freq_bytes.extend(encoded_char.len().to_le_bytes());
+        freq_bytes.extend((encoded_char.len() as u8).to_be_bytes());
         freq_bytes.extend_from_slice(encoded_char.as_bytes());
         freq_bytes.extend(f.to_be_bytes());
     }
@@ -118,7 +124,7 @@ fn write_header(filename: String, freqs: HashMap<char, i32>) -> Result<(), Error
         .map_err(|_| Error::FileWriting)?;
 
     output_file
-        .write_all(&freq_bytes.len().to_be_bytes())
+        .write_all(&(freq_bytes.len() as u32).to_be_bytes())
         .map_err(|_| Error::FileWriting)?;
 
     output_file
@@ -128,8 +134,56 @@ fn write_header(filename: String, freqs: HashMap<char, i32>) -> Result<(), Error
     Ok(())
 }
 
-fn get_frequencies(args: &Args) -> Result<HashMap<char, i32>, Error> {
-    let mut frequencies: HashMap<char, i32> = HashMap::new();
+fn read_header(file: &mut File) -> Result<FreqTable, Error> {
+    let file = file;
+
+    let mut header_size_len = [0u8; 4];
+    file.read_exact(&mut header_size_len)
+        .map_err(|_| Error::FileReading)?;
+    let header_size_len = u32::from_be_bytes(header_size_len);
+
+    let mut header = vec![0u8; header_size_len as usize];
+    file.read_exact(&mut header)
+        .map_err(|_| Error::FileReading)?;
+
+    let mut table = FreqTable::new();
+
+    let mut iter = header.iter();
+    while let Some(b) = iter.next() {
+        let char_size = u8::from_be_bytes([*b]);
+        let mut char_buf = vec![0; char_size as usize];
+        for i in 0..char_size {
+            char_buf[i as usize] = match iter.next() {
+                Some(b) => *b,
+                None => return Err(Error::InvalidFile),
+            }
+        }
+        let char = match str::from_utf8(&char_buf)
+            .map_err(|_| Error::InvalidFile)?
+            .chars()
+            .nth(0)
+        {
+            Some(c) => c,
+            None => return Err(Error::InvalidFile),
+        };
+
+        let mut f_buf = [0; 4];
+        for i in 0..4 {
+            f_buf[i] = match iter.next() {
+                Some(b) => *b,
+                None => return Err(Error::InvalidFile),
+            }
+        }
+        let freq = u32::from_be_bytes(f_buf);
+
+        table.insert(char, freq);
+    }
+
+    Ok(table)
+}
+
+fn get_frequencies(args: &Args) -> Result<FreqTable, Error> {
+    let mut frequencies: FreqTable = HashMap::new();
 
     for_chars(args.input.clone(), |c| {
         *frequencies.entry(c).or_insert(0) += 1;

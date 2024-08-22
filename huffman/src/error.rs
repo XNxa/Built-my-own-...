@@ -4,10 +4,12 @@ use std::fmt::Display;
 pub enum Error {
     FileUnreadable,
     FileWriting,
+    FileReading,
     NotEnoughDifferentChars,
     UsingOWithoutFile,
     BadOption,
     NoFileProvided,
+    InvalidFile,
 }
 
 impl Display for Error {
@@ -24,6 +26,8 @@ impl Display for Error {
             Error::BadOption => write!(f, "Options not recognized, please check the usage."),
             Error::FileWriting => write!(f, "An error occured while writing to the output file"),
             Error::NoFileProvided => write!(f, "No file provided."),
+            Error::FileReading => write!(f, "An error occured while reading the file."),
+            Error::InvalidFile => write!(f, "The provided file's format is invalid."),
         }
     }
 }

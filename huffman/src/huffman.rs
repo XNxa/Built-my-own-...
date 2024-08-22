@@ -6,21 +6,21 @@ use crate::HashMap;
 enum HuffmanNode {
     Leaf {
         element: char,
-        weight: i32,
+        weight: u32,
     },
     Internal {
-        weight: i32,
+        weight: u32,
         left: Box<HuffmanNode>,
         right: Box<HuffmanNode>,
     },
 }
 
 impl HuffmanNode {
-    fn new_leaf(element: char, weight: i32) -> HuffmanNode {
+    fn new_leaf(element: char, weight: u32) -> HuffmanNode {
         HuffmanNode::Leaf { element, weight }
     }
 
-    fn new_internal(left: HuffmanNode, right: HuffmanNode, weight: i32) -> HuffmanNode {
+    fn new_internal(left: HuffmanNode, right: HuffmanNode, weight: u32) -> HuffmanNode {
         HuffmanNode::Internal {
             weight,
             left: Box::new(left),
@@ -28,7 +28,7 @@ impl HuffmanNode {
         }
     }
 
-    fn weight(&self) -> i32 {
+    fn weight(&self) -> u32 {
         match self {
             Self::Leaf { weight, .. } => *weight,
             Self::Internal { weight, .. } => *weight,
@@ -85,7 +85,7 @@ impl Ord for HuffmanTree {
 }
 
 impl HuffmanTree {
-    pub fn build_huffman(freq: HashMap<char, i32>) -> Option<HuffmanTree> {
+    pub fn build_huffman(freq: HashMap<char, u32>) -> Option<HuffmanTree> {
         if freq.len() < 2 {
             return None;
         }
@@ -192,4 +192,3 @@ mod tests {
         assert!(tree.root.right().unwrap().elem().is_none());
     }
 }
-
