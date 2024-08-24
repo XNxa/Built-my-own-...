@@ -2,7 +2,7 @@ use crate::error::Error;
 
 pub enum Mode {
     Compress,
-    Uncompress,
+    Decompress,
 }
 
 pub struct Args {
@@ -18,12 +18,12 @@ impl Args {
         let mut out_file = None;
         let mut mode = Mode::Compress;
 
-        let mut iter = args.iter();
+        let mut iter = args.iter().skip(1);
         while let Some(arg) = iter.next() {
             if arg.starts_with("-") {
                 match arg.as_str() {
                     "-c" => mode = Mode::Compress,
-                    "-u" => mode = Mode::Uncompress,
+                    "-d" => mode = Mode::Decompress,
                     "-o" => match iter.next() {
                         Some(s) => out_file = Some(s.to_string()),
                         None => return Err(Error::UsingOWithoutFile),
