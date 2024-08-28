@@ -7,6 +7,8 @@ pub enum Error {
     MismatchQuote,
     TrailingComma,
     SyntaxError,
+    ParsingError,
+    InvalidNumber,
 }
 
 impl Debug for Error {
@@ -23,7 +25,9 @@ impl Debug for Error {
             Error::TrailingComma => {
                 writeln!(f, "Error: the object seems to have a trailing comma.")
             }
+            Error::InvalidNumber => writeln!(f, "Error: Unable to parse number"),
             Error::SyntaxError => writeln!(f, "Error: invalid syntax."),
+            Error::ParsingError => writeln!(f, "Error: parsing error."),
         }
     }
 }
