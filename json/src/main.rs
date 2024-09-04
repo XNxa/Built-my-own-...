@@ -1,9 +1,5 @@
 use crate::error::Error;
-use std::{
-    env,
-    iter::{self, Peekable},
-    process::exit,
-};
+use std::{env, process::exit};
 
 mod error;
 
@@ -18,6 +14,8 @@ enum Token {
     False,
     Null,
     Number(f64),
+    OpenList,
+    CloseList,
 }
 
 #[derive(Debug, PartialEq)]
@@ -55,9 +53,12 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
     let mut tokens = Vec::new();
     let mut iter = input.chars();
     while let Some(ch) = iter.next() {
+        println!("{}", ch);
         match ch {
             '{' => tokens.push(Token::OpenBracket),
             '}' => tokens.push(Token::CloseBracket),
+            '[' => tokens.push(Token::OpenList),
+            ']' => tokens.push(Token::CloseList),
             ',' => tokens.push(Token::Comma),
             ':' => tokens.push(Token::Colon),
             '"' => {
@@ -88,7 +89,7 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
                 Err(e) => return Err(e),
             },
             '\u{0020}' | '\u{000A}' | '\u{000D}' | '\u{0009}' => continue, // Ignore whitespaces, tabs, ...
-            c @ '-' | c @ '0'..='9' => match tokenize_digit(c, &mut iter) {
+            c @ '-' | c @ '0'..='9' => match tokenize_digits(c, &mut iter) {
                 Ok(n) => tokens.push(Token::Number(n)),
                 Err(e) => return Err(e),
             },
@@ -98,13 +99,13 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
-fn tokenize_digit(c: char, iter: &mut std::str::Chars<'_>) -> Result<f64, Error> {
+fn tokenize_digits(c: char, iter: &mut std::str::Chars<'_>) -> Result<f64, Error> {
     let mut iter = iter.peekable();
     let mut s = String::new();
     s.push(c);
 
     while let Some(ch) = iter.peek() {
-        if ch.is_whitespace() {
+        if !"0123456789Ee.+-".contains(*ch) {
             break;
         }
         s.push(iter.next().unwrap())
@@ -167,17 +168,45 @@ fn parse_object(iter: &mut dyn Iterator<Item = Token>) -> Result<Object, Error> 
     }
 }
 
+fn parse_list(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> {
+    let mut values = Vec::new();
+    match parse_value(iter) {
+        Ok(v) => values.push(v),
+        Err(e) => return Err(e),
+    }
+    while let Some(token) = iter.next() {
+        match token {
+            Token::Comma => match parse_value(iter) {
+                Ok(v) => values.push(v),
+                Err(e) => return Err(e),
+            },
+            Token::CloseList => return Ok(Value::Array(values)),
+            _ => return Err(Error::SyntaxError),
+        }
+    }
+    return Err(Error::SyntaxError);
+}
+
 fn parse_kv(key: String, iter: &mut dyn Iterator<Item = Token>) -> Result<KV, Error> {
     match iter.next() {
-        Some(Token::Colon) => match iter.next() {
-            Some(Token::Litteral(value)) => Ok(KV(key, Value::Str(value))),
-            Some(Token::True) => Ok(KV(key, Value::Bool(true))),
-            Some(Token::False) => Ok(KV(key, Value::Bool(false))),
-            Some(Token::Null) => Ok(KV(key, Value::Null)),
-            Some(Token::Number(n)) => Ok(KV(key, Value::Number(n))),
+        Some(Token::Colon) => parse_value(iter).map(|v| KV(key, v)),
+        _ => Err(Error::SyntaxError),
+    }
+}
+
+fn parse_value(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> {
+    match iter.next() {
+        Some(t) => match t {
+            Token::OpenBracket => parse_object(iter).map(|kvs| Value::Object(kvs)),
+            Token::Litteral(l) => Ok(Value::Str(l)),
+            Token::True => Ok(Value::Bool(true)),
+            Token::False => Ok(Value::Bool(false)),
+            Token::Null => Ok(Value::Null),
+            Token::Number(n) => Ok(Value::Number(n)),
+            Token::OpenList => parse_list(iter),
             _ => Err(Error::SyntaxError),
         },
-        _ => Err(Error::SyntaxError),
+        None => Err(Error::SyntaxError),
     }
 }
 
@@ -248,5 +277,51 @@ mod tests {
     #[test]
     fn test_step3_invalid() {
         assert!(analyse(std::fs::read_to_string("tests/step3/invalid.json").unwrap()).is_err());
+    }
+
+    #[test]
+    fn test_step4_valid() {
+        let json = analyse(std::fs::read_to_string("tests/step4/valid.json").unwrap()).unwrap();
+
+        assert_eq!(
+            json[0],
+            KV("key".to_string(), Value::Str("value".to_string()))
+        );
+        assert_eq!(json[1], KV("key-n".to_string(), Value::Number(101f64)));
+        assert_eq!(json[2], KV("key-o".to_string(), Value::Object(Vec::new())));
+        assert_eq!(json[3], KV("key-l".to_string(), Value::Array(Vec::new())));
+    }
+
+    #[test]
+    fn test_step4_valid2() {
+        let json = analyse(std::fs::read_to_string("tests/step4/valid2.json").unwrap()).unwrap();
+
+        assert_eq!(
+            json[0],
+            KV("key".to_string(), Value::Str("value".to_string()))
+        );
+        assert_eq!(json[1], KV("key-n".to_string(), Value::Number(101f64)));
+        assert_eq!(
+            json[2],
+            KV(
+                "key-o".to_string(),
+                Value::Object(vec![KV(
+                    "inner key".to_string(),
+                    Value::Str("inner value".to_string())
+                )])
+            )
+        );
+        assert_eq!(
+            json[3],
+            KV(
+                "key-l".to_string(),
+                Value::Array(vec![(Value::Str("list value".to_string()))])
+            )
+        );
+    }
+
+    #[test]
+    fn test_step4_invalid() {
+        assert!(analyse(std::fs::read_to_string("tests/step4/invalid.json").unwrap()).is_err());
     }
 }
