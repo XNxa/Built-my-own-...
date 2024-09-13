@@ -3,9 +3,9 @@ For the moment, I'm using Rust to build these, but I could switch languages in t
 
 ## List
 
-- [x] wc Tool
-- [x] JSON Parser
-- [x] Compression Tool
+- [x] [wc Tool](/wc)
+- [x] [JSON Parser](/json)
+- [x] [Compression Tool](/huffman)
 - [ ] cut Tool
 - [ ] Load Balancer
 - [ ] Sort Tool
