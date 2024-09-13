@@ -1,14 +1,17 @@
 use std::fmt::Debug;
 
+use crate::Token;
+
 pub enum Error {
     UnrecognizedToken(char),
     MustBeginWithBracket,
     MissingClosingBracket,
     MismatchQuote,
     TrailingComma,
-    SyntaxError,
+    SyntaxError(Token, u32),
     ParsingError,
     InvalidNumber,
+    MissingValue,
 }
 
 impl Debug for Error {
@@ -25,9 +28,12 @@ impl Debug for Error {
             Error::TrailingComma => {
                 writeln!(f, "Error: the object seems to have a trailing comma.")
             }
-            Error::InvalidNumber => writeln!(f, "Error: Unable to parse number"),
-            Error::SyntaxError => writeln!(f, "Error: invalid syntax."),
+            Error::InvalidNumber => writeln!(f, "Error: unable to parse number"),
+            Error::SyntaxError(tok, l) => {
+                writeln!(f, "Error: invalid syntax on token : {tok:?}. [l. {l}]")
+            }
             Error::ParsingError => writeln!(f, "Error: parsing error."),
+            Error::MissingValue => writeln!(f, "Error: missing value after key definition."),
         }
     }
 }

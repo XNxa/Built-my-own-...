@@ -53,7 +53,6 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
     let mut tokens = Vec::new();
     let mut iter = input.chars();
     while let Some(ch) = iter.next() {
-        println!("{}", ch);
         match ch {
             '{' => tokens.push(Token::OpenBracket),
             '}' => tokens.push(Token::CloseBracket),
@@ -100,14 +99,15 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
 }
 
 fn tokenize_digits(c: char, iter: &mut std::str::Chars<'_>) -> Result<f64, Error> {
-    let mut iter = iter.peekable();
+    let mut peekable = iter.clone().peekable();
     let mut s = String::new();
     s.push(c);
 
-    while let Some(ch) = iter.peek() {
+    while let Some(ch) = peekable.peek() {
         if !"0123456789Ee.+-".contains(*ch) {
             break;
         }
+        peekable.next();
         s.push(iter.next().unwrap())
     }
 
@@ -127,6 +127,8 @@ fn main() -> Result<(), Error> {
 
 fn analyse(raw: String) -> Result<Object, Error> {
     let tokens = tokenize(raw)?;
+
+    println!("{tokens:?}");
 
     let mut iter = tokens.into_iter();
     let json = match iter.next() {
@@ -155,14 +157,15 @@ fn parse_object(iter: &mut dyn Iterator<Item = Token>) -> Result<Object, Error> 
                                 Ok(kv) => object.push(kv),
                                 Err(e) => return Err(e),
                             },
-                            _ => return Err(Error::SyntaxError),
+                            _ => return Err(Error::TrailingComma),
                         },
                         Some(Token::CloseBracket) => return Ok(object),
-                        _ => return Err(Error::SyntaxError),
+                        Some(token) => return Err(Error::SyntaxError(token, line!())),
+                        None => return Err(Error::MissingClosingBracket),
                     }
                 }
             }
-            _ => Err(Error::SyntaxError),
+            _ => Err(Error::SyntaxError(Token::OpenBracket, line!())),
         },
         None => Err(Error::MissingClosingBracket),
     }
@@ -172,7 +175,10 @@ fn parse_list(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> {
     let mut values = Vec::new();
     match parse_value(iter) {
         Ok(v) => values.push(v),
-        Err(e) => return Err(e),
+        Err(e) => match e {
+            Error::SyntaxError(Token::CloseList, _) => return Ok(Value::Array(values)),
+            _ => return Err(e),
+        },
     }
     while let Some(token) = iter.next() {
         match token {
@@ -181,16 +187,17 @@ fn parse_list(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> {
                 Err(e) => return Err(e),
             },
             Token::CloseList => return Ok(Value::Array(values)),
-            _ => return Err(Error::SyntaxError),
+            _ => return Err(Error::SyntaxError(token, line!())),
         }
     }
-    return Err(Error::SyntaxError);
+    return Err(Error::MissingClosingBracket);
 }
 
 fn parse_kv(key: String, iter: &mut dyn Iterator<Item = Token>) -> Result<KV, Error> {
     match iter.next() {
         Some(Token::Colon) => parse_value(iter).map(|v| KV(key, v)),
-        _ => Err(Error::SyntaxError),
+        Some(token) => Err(Error::SyntaxError(token, line!())),
+        _ => Err(Error::MissingValue),
     }
 }
 
@@ -203,10 +210,10 @@ fn parse_value(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> 
             Token::False => Ok(Value::Bool(false)),
             Token::Null => Ok(Value::Null),
             Token::Number(n) => Ok(Value::Number(n)),
-            Token::OpenList => parse_list(iter),
-            _ => Err(Error::SyntaxError),
+            Token::OpenList => parse_list(iter).map(|v| v),
+            _ => Err(Error::SyntaxError(t, line!())),
         },
-        None => Err(Error::SyntaxError),
+        None => Err(Error::MissingValue),
     }
 }
 
