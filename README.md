@@ -1,0 +1,78 @@
+This repository holds the [coding challenges](https://codingchallenges.fyi/challenges/intro) I've completed.
+For the moment, I'm using Rust to build these, but I could switch languages in the future.
+
+## List
+
+- [x] [wc Tool](/wc)
+- [x] [JSON Parser](/json)
+- [x] [Compression Tool](/huffman)
+- [ ] cut Tool
+- [ ] Load Balancer
+- [ ] Sort Tool
+- [ ] Calculator
+- [ ] Redis Server
+- [ ] grep
+- [ ] uniq Tool
+- [ ] Web Server
+- [ ] URL Shortener
+- [ ] diff Tool
+- [ ] Shell
+- [ ] cat Tool
+- [ ] IRC Client
+- [ ] Memcached Server
+- [ ] Spotify Client
+- [ ] Discord Bot
+- [ ] LinkedIn Carousel Generator
+- [ ] Sed
+- [ ] DNS Resolver
+- [ ] Traceroute
+- [ ] Realtime Chat Client and Server
+- [ ] NATS Message Broker
+- [ ] Git
+- [ ] Rate Limiter
+- [ ] NTP Client
+- [ ] Scheduling Automation App
+- [ ] Lisp Interpreter
+- [ ] QR Code Generator
+- [ ] Crontab Tool
+- [ ] head
+- [ ] jq
+- [ ] Google Keep
+- [ ] Pong
+- [ ] Redis CLI Tool
+- [ ] Network Modelling Tool
+- [ ] Social Media Tool
+- [ ] curl
+- [ ] HTTP(S) Load Tester
+- [ ] tr Tool.
+- [ ] Tetris
+- [ ] DNS Forwarder
+- [ ] Port Scanner
+- [ ] yq
+- [ ] Chrome Extension
+- [ ] Data Privacy Vault
+- [ ] Password Cracker
+- [ ] Xargs
+- [ ] HTTP Forward Proxy Server
+- [ ] Docker
+- [ ] Spell Checker Using A Bloom Filter
+- [ ] Tar
+- [ ] Xxd
+- [ ] Chess Game
+- [ ] Snake Game
+- [ ] Password Manager
+- [ ] Netcat
+- [ ] PasteBin
+- [ ] DropBox
+- [ ] Git Contributions Visualisation Tool
+- [ ] Space Invaders
+- [ ] Spotify Playlist Backup Service
+- [ ] Minesweeper
+- [ ] Zip File Cracker
+- [ ] YAML Parser
+- [ ] Blogging Software
+- [ ] Notion
+- [ ] Memcached CLI Tool
+- [ ] Wheel of Names
+- [ ] Sudoku
+
