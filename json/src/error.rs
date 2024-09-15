@@ -3,15 +3,18 @@ use std::fmt::Debug;
 use crate::Token;
 
 pub enum Error {
+    SyntaxError(Token, u32), // Generic error, should be replaced with explicit ones
+    // The u32 refers to the line where it was created in the
+    // source code for debug purposes
     UnrecognizedToken(char),
     MustBeginWithBracket,
     MissingClosingBracket,
     MismatchQuote,
     TrailingComma,
-    SyntaxError(Token, u32),
     ParsingError,
     InvalidNumber,
     MissingValue,
+    ExtraValue,
 }
 
 impl Debug for Error {
@@ -34,6 +37,7 @@ impl Debug for Error {
             }
             Error::ParsingError => writeln!(f, "Error: parsing error."),
             Error::MissingValue => writeln!(f, "Error: missing value after key definition."),
+            Error::ExtraValue => writeln!(f, "Error: extra token found after object"),
         }
     }
 }

@@ -128,15 +128,17 @@ fn main() -> Result<(), Error> {
 fn analyse(raw: String) -> Result<Object, Error> {
     let tokens = tokenize(raw)?;
 
-    println!("{tokens:?}");
-
     let mut iter = tokens.into_iter();
     let json = match iter.next() {
         Some(Token::OpenBracket) => parse_object(&mut iter),
         _ => Err(Error::MustBeginWithBracket),
     }?;
 
-    Ok(json)
+    if iter.next().is_none() {
+        Ok(json)
+    } else {
+        Err(Error::ExtraValue)
+    }
 }
 
 fn parse_object(iter: &mut dyn Iterator<Item = Token>) -> Result<Object, Error> {
@@ -330,5 +332,33 @@ mod tests {
     #[test]
     fn test_step4_invalid() {
         assert!(analyse(std::fs::read_to_string("tests/step4/invalid.json").unwrap()).is_err());
+    }
+
+    #[test]
+    fn test_step5_fails() {
+        std::fs::read_dir("tests/step5/")
+            .unwrap()
+            .filter(|dir_entry| {
+                dir_entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("fail")
+            })
+            .for_each(|dir_entry| {
+                assert!(
+                    analyse(std::fs::read_to_string(dir_entry.as_ref().unwrap().path()).unwrap())
+                        .is_err(),
+                    "Failed on file {}",
+                    dir_entry.unwrap().file_name().to_str().unwrap()
+                )
+            })
+    }
+
+    #[test]
+    fn test_step5_pass1() {
+        analyse(std::fs::read_to_string("tests/step5/pass1.json").unwrap()).unwrap();
     }
 }
