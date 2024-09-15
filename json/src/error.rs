@@ -6,7 +6,7 @@ pub enum Error {
     SyntaxError(Token, u32), // Generic error, should be replaced with explicit ones
     // The u32 refers to the line where it was created in the
     // source code for debug purposes
-    UnrecognizedToken(char),
+    UnrecognizedToken(char, usize),
     MustBeginWithBracket,
     MissingClosingBracket,
     MismatchQuote,
@@ -15,12 +15,15 @@ pub enum Error {
     InvalidNumber,
     MissingValue,
     ExtraValue,
+    LineBreakInLitteral,
 }
 
 impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::UnrecognizedToken(c) => writeln!(f, "Error: {c} is an invalid token."),
+            Error::UnrecognizedToken(c, l) => {
+                writeln!(f, "Error: {c} is an invalid token, char n°{l}.")
+            }
             Error::MustBeginWithBracket => {
                 writeln!(f, "Error: the json object must begin with '{{'.") // {{ to escape
             }
@@ -38,6 +41,9 @@ impl Debug for Error {
             Error::ParsingError => writeln!(f, "Error: parsing error."),
             Error::MissingValue => writeln!(f, "Error: missing value after key definition."),
             Error::ExtraValue => writeln!(f, "Error: extra token found after object"),
+            Error::LineBreakInLitteral => {
+                writeln!(f, "Error: line break in str value is not allowed")
+            }
         }
     }
 }

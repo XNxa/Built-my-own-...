@@ -33,12 +33,15 @@ type Object = Vec<KV>;
 #[derive(PartialEq, Debug)]
 struct KV(String, Value);
 
-fn read_end_word(end_of_word: &str, iter: &mut dyn Iterator<Item = char>) -> Result<(), Error> {
+fn read_end_word(
+    end_of_word: &str,
+    iter: &mut dyn Iterator<Item = (usize, char)>,
+) -> Result<(), Error> {
     for c in end_of_word.chars() {
         match (c, iter.next()) {
-            (a, Some(b)) => {
+            (a, Some((i, b))) => {
                 if a != b {
-                    return Err(Error::UnrecognizedToken(b));
+                    return Err(Error::UnrecognizedToken(b, i));
                 }
             }
             _ => {
@@ -51,8 +54,8 @@ fn read_end_word(end_of_word: &str, iter: &mut dyn Iterator<Item = char>) -> Res
 
 fn tokenize(input: String) -> Result<Vec<Token>, Error> {
     let mut tokens = Vec::new();
-    let mut iter = input.chars();
-    while let Some(ch) = iter.next() {
+    let mut iter = input.chars().enumerate();
+    while let Some((i, ch)) = iter.next() {
         match ch {
             '{' => tokens.push(Token::OpenBracket),
             '}' => tokens.push(Token::CloseBracket),
@@ -64,11 +67,18 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
                 let mut l = String::new();
                 loop {
                     match iter.next() {
-                        Some(c) => {
+                        Some((_, c)) => {
                             if c == '"' {
                                 break;
+                            } else if c == '\\' {
+                                l.push(c);
+                                match iter.next() {
+                                    Some((_, c)) => l.push(c),
+                                    None => return Err(Error::MismatchQuote),
+                                }
+                            } else {
+                                l.push(c);
                             }
-                            l.push(c);
                         }
                         None => return Err(Error::MismatchQuote),
                     }
@@ -92,23 +102,27 @@ fn tokenize(input: String) -> Result<Vec<Token>, Error> {
                 Ok(n) => tokens.push(Token::Number(n)),
                 Err(e) => return Err(e),
             },
-            _ => return Err(Error::UnrecognizedToken(ch)),
+            _ => return Err(Error::UnrecognizedToken(ch, i)),
         }
+        println!("{:?}", tokens[tokens.len() - 1]);
     }
     Ok(tokens)
 }
 
-fn tokenize_digits(c: char, iter: &mut std::str::Chars<'_>) -> Result<f64, Error> {
+fn tokenize_digits(
+    c: char,
+    iter: &mut std::iter::Enumerate<std::str::Chars<'_>>,
+) -> Result<f64, Error> {
     let mut peekable = iter.clone().peekable();
     let mut s = String::new();
     s.push(c);
 
-    while let Some(ch) = peekable.peek() {
+    while let Some((_, ch)) = peekable.peek() {
         if !"0123456789Ee.+-".contains(*ch) {
             break;
         }
         peekable.next();
-        s.push(iter.next().unwrap())
+        s.push(iter.next().unwrap().1)
     }
 
     s.parse().map_err(|_| Error::InvalidNumber)
@@ -131,6 +145,7 @@ fn analyse(raw: String) -> Result<Object, Error> {
     let mut iter = tokens.into_iter();
     let json = match iter.next() {
         Some(Token::OpenBracket) => parse_object(&mut iter),
+        Some(Token::OpenList) => parse_list(&mut iter).map(|v| vec![KV("".to_string(), v)]),
         _ => Err(Error::MustBeginWithBracket),
     }?;
 
@@ -207,7 +222,13 @@ fn parse_value(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> 
     match iter.next() {
         Some(t) => match t {
             Token::OpenBracket => parse_object(iter).map(|kvs| Value::Object(kvs)),
-            Token::Litteral(l) => Ok(Value::Str(l)),
+            Token::Litteral(l) => {
+                if is_valid_str_value(&l) {
+                    Ok(Value::Str(l))
+                } else {
+                    Err(Error::LineBreakInLitteral)
+                }
+            }
             Token::True => Ok(Value::Bool(true)),
             Token::False => Ok(Value::Bool(false)),
             Token::Null => Ok(Value::Null),
@@ -217,6 +238,16 @@ fn parse_value(iter: &mut (dyn Iterator<Item = Token>)) -> Result<Value, Error> 
         },
         None => Err(Error::MissingValue),
     }
+}
+
+fn is_valid_str_value(l: &str) -> bool {
+    let mut chars = l.chars();
+    while let Some(c) = chars.next() {
+        if c == '\n' || c == '\t' {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -360,5 +391,15 @@ mod tests {
     #[test]
     fn test_step5_pass1() {
         analyse(std::fs::read_to_string("tests/step5/pass1.json").unwrap()).unwrap();
+    }
+
+    #[test]
+    fn test_step5_pass2() {
+        analyse(std::fs::read_to_string("tests/step5/pass2.json").unwrap()).unwrap();
+    }
+
+    #[test]
+    fn test_step5_pass3() {
+        analyse(std::fs::read_to_string("tests/step5/pass3.json").unwrap()).unwrap();
     }
 }
