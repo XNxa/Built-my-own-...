@@ -6,7 +6,7 @@ For the moment, I'm using Rust to build these, but I could switch languages in t
 - [x] [wc Tool](/wc)
 - [x] [JSON Parser](/json)
 - [x] [Compression Tool](/huffman)
-- [ ] cut Tool
+- [x] [cut Tool](/cut)
 - [ ] Load Balancer
 - [ ] Sort Tool
 - [ ] Calculator
