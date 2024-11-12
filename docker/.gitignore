@@ -1,0 +1,4 @@
+.vscode/
+alpine/
+*.o
+ccrun
