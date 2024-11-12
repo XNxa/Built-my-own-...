@@ -32,14 +32,17 @@ static int child(void *args) {
         fprintf(stderr, "Erreur sethostname : %s\n", strerror(errno));
         exit(1);
     }
+
     if (chroot("alpine/") == -1) {
         fprintf(stderr, "Erreur chroot : %s\n", strerror(errno));
         exit(1);
     }
+
     if (chdir("/") == -1) {
         fprintf(stderr, "Erreur chdir : %s\n", strerror(errno));
         exit(1);
     }
+    
     if (mount("proc", "/proc", "proc", 0, NULL) == -1) {
         fprintf(stderr, "Erreur mount /proc : %s\n", strerror(errno));
         exit(1);
@@ -86,7 +89,7 @@ int main(int argc, char** argv) {
         .argv = argv
     };
 
-    int pid = clone(child, stackTop, CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWUTS | SIGCHLD, &arguments);
+    int pid = clone(child, stackTop, CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWUTS | SIGCHLD, &arguments);
     if (pid == -1) {
         fprintf(stderr, "Erreur clone : %s\n", strerror(errno));
         free(stack);
