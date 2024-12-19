@@ -1,4 +1,5 @@
 #!/bin/bash
+[ "$UID" -eq 0 ] || exec sudo bash "$0" "$@"
 
 # Define the command for your runtime
 RUNTIME="./ccrun"
@@ -15,6 +16,8 @@ function run_test {
     fi
     echo "--------------------------------"
 }
+
+
 
 # Step 1: Run an arbitrary command
 run_test "Step 1: Run a command" \
@@ -48,9 +51,9 @@ run_test "Step 5: Rootless containers" \
 run_test "Step 5: Rootless containers" \
     "test \$($RUNTIME run sh -c 'sleep 1' | ps -el | grep \"4.*\$(id -u).*sleep\" | wc -l) -eq 1"
 
-# # Step 6: Limit resources
-# run_test "Step 6: Memory limit enforcement" \
-#     "($RUNTIME run /bin/busybox sh -c 'ulimit -m | grep -q 512')"
+# Step 6: Limit resources
+run_test "Step 6: Memory limit enforcement" \
+    "($RUNTIME run /bin/busybox sh -c 'ulimit -m | grep -q 512')"
 
 # run_test "Step 6: CPU limit enforcement" \
 #     "($RUNTIME run /bin/busybox sh -c 'cat /sys/fs/cgroup/cpu/cpu.shares | grep -q 512')"

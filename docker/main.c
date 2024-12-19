@@ -9,28 +9,36 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <limits.h>
-#include "main.h"
 
-#define STACK_SIZE (1024 * 1024)    /* Stack size for cloned child */
+#define STACK_SIZE (1024 * 1024) /* Stack size for cloned child */
 
-struct args {
+struct args
+{
     int argc;
     char **argv;
-    int pipe_fd[2];  /* Pipe for parent-child synchronization */
+    int pipe_fd[2]; /* Pipe for parent-child synchronization */
 };
 
-void usage() {
+void error_exit(const char *msg) {
+    fprintf(stderr, "Error: %s - %s\n", msg, strerror(errno));
+    exit(1);
+}
+
+void usage()
+{
     fprintf(stderr, "Usage:\n\tccrun run <command> <args>\n\n");
     exit(1);
 }
 
-int update_map(const char *map, const char *map_path) {
+int update_map(const char *map, const char *map_path)
+{
     FILE *f = fopen(map_path, "w");
-    if (f == NULL) {
-        perror("fopen");
-        return -1;
+    if (f == NULL)
+    {
+        error_exit("Failed to open map file for writing");
     }
     fprintf(f, "%s", map);
     fclose(f);
@@ -39,133 +47,208 @@ int update_map(const char *map, const char *map_path) {
 
 void write_uid_gid_mappings(int pid)
 {
-    // Parent process waits for the child to update UID/GID mappings
     char map_buf[100];
     const int MAP_BUF_SIZE = 100;
     char map_path[PATH_MAX];
 
-    // Update UID map for the child
     snprintf(map_path, PATH_MAX, "/proc/%d/uid_map", pid);
-    snprintf(map_buf, MAP_BUF_SIZE, "0 %d 1", getuid()); // Map UID 0 in the parent to UID 0 in the child
-    update_map(map_buf, map_path);
+    snprintf(map_buf, MAP_BUF_SIZE, "0 %d 1", getuid());
+    if (update_map(map_buf, map_path) != 0)
+    {
+        error_exit("Failed to update UID map");
+    }
 
-    // Update GID map for the child
     snprintf(map_path, PATH_MAX, "/proc/%d/gid_map", pid);
-    snprintf(map_buf, MAP_BUF_SIZE, "0 %d 1", getgid()); // Map GID 0 in the parent to GID 0 in the child
-    update_map(map_buf, map_path);
+    snprintf(map_buf, MAP_BUF_SIZE, "0 %d 1", getgid());
+    if (update_map(map_buf, map_path) != 0)
+    {
+        error_exit("Failed to update GID map");
+    }
 }
 
+int write_limits()
+{
+    const char *cgroup_path = "/sys/fs/cgroup/container-ccrun";
+    pid_t pid = getpid();
 
-static int child(void *args) {
+    if (mkdir(cgroup_path, 0777) != 0)
+    {
+        error_exit("Failed to create cgroup directory");
+    }
+
+    // Limit the CPU
+    char cpu_max_path[256];
+    snprintf(cpu_max_path, sizeof(cpu_max_path), "%s/cpu.max", cgroup_path);
+    FILE *f_cpu = fopen(cpu_max_path, "w");
+    if (f_cpu == NULL)
+    {
+        error_exit("Failed to open cpu.max file");
+    }
+    fprintf(f_cpu, "10000 100000");
+    fclose(f_cpu);
+
+    // Set memory limits
+    char memory_max_path[256];
+    snprintf(memory_max_path, sizeof(memory_max_path), "%s/memory.max", cgroup_path);
+    FILE *f_mem = fopen(memory_max_path, "w");
+    if (f_mem == NULL)
+    {
+        error_exit("Failed to open memory.max file");
+    }
+    fprintf(f_mem, "67108864");
+    fclose(f_mem);
+
+    // Add process to cgroup
+    char cgroup_procs_path[256];
+    snprintf(cgroup_procs_path, sizeof(cgroup_procs_path), "%s/cgroup.procs", cgroup_path);
+    FILE *f_procs = fopen(cgroup_procs_path, "w");
+    if (f_procs == NULL)
+    {
+        error_exit("Failed to open cgroup.procs file");
+    }
+    fprintf(f_procs, "%d", pid);
+    fclose(f_procs);
+
+    return 0;
+}
+
+int remove_cgroup_directory()
+{
+    const char *cgroup_path = "/sys/fs/cgroup/container-ccrun";
+
+    // Attempt to remove the cgroup directory
+    if (rmdir(cgroup_path) == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        if (errno == ENOENT)
+        {
+            printf("Cgroup directory %s does not exist.\n", cgroup_path);
+        }
+        else
+        {
+            perror("Error removing cgroup directory");
+        }
+        return 1;
+    }
+}
+
+static int child(void *args)
+{
     struct args *arguments = (struct args *)args;
-    
-    // Wait until the parent has updated UID and GID mappings.
-    close(arguments->pipe_fd[1]);    // Close write end of the pipe
+
+    close(arguments->pipe_fd[1]);
     char ch;
-    if (read(arguments->pipe_fd[0], &ch, 1) != 0) {
-        fprintf(stderr, "Failure in child: read from pipe returned != 0\n");
-        exit(1);
+    if (read(arguments->pipe_fd[0], &ch, 1) != 0)
+    {
+        error_exit("Failed to read from pipe in child");
     }
     close(arguments->pipe_fd[0]);
 
-    // Set hostname for the new container.
-    if (sethostname("container", 9) == -1) {
-        fprintf(stderr, "Erreur sethostname : %s\n", strerror(errno));
-        exit(1);
+    if (write_limits() != 0)
+    {
+        error_exit("Failed to write resource limits");
     }
 
-    // Chroot into the "alpine/" directory and make sure this exists.
-    if (chroot("alpine/") == -1) {
-        fprintf(stderr, "Erreur chroot : %s\n", strerror(errno));
-        exit(1);
+    if (sethostname("container", 9) == -1)
+    {
+        error_exit("Failed to set hostname");
     }
 
-    // Change to the new root.
-    if (chdir("/") == -1) {
-        fprintf(stderr, "Erreur chdir : %s\n", strerror(errno));
-        exit(1);
-    }
-    
-    // Mount the proc filesystem for the new namespace.
-    if (mount("proc", "/proc", "proc", 0, NULL) == -1) {
-        fprintf(stderr, "Erreur mount /proc : %s\n", strerror(errno));
-        exit(1);
+    if (chroot("alpine/") == -1)
+    {
+        error_exit("Failed to change root directory");
     }
 
-    // Execute the command passed by the parent process.
-    if (arguments->argc > 3) {
+    if (chdir("/") == -1)
+    {
+        error_exit("Failed to change directory to new root");
+    }
+
+    if (mount("proc", "/proc", "proc", 0, NULL) == -1)
+    {
+        error_exit("Failed to mount /proc filesystem");
+    }
+
+    if (arguments->argc > 3)
+    {
         execvp(arguments->argv[2], arguments->argv + 2);
-    } else {
-        char *empty[] = { arguments->argv[2], NULL };
+    }
+    else
+    {
+        char *empty[] = {arguments->argv[2], NULL};
         execvp(arguments->argv[2], empty);
     }
 
-    fprintf(stderr, "Erreur execvp : %s\n", strerror(errno));
-    exit(1);
+    error_exit("execvp failed");
+    return 1; // Unreachable
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Erreur : Aucun argument n'est spécifié.\n");
+int main(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        fprintf(stderr, "Error: No arguments specified.\n");
         usage();
     }
 
-    if (strcmp(argv[1], "run") != 0) {
-        fprintf(stderr, "Erreur : Option inconnue '%s'.\n", argv[1]);
+    if (strcmp(argv[1], "run") != 0)
+    {
+        fprintf(stderr, "Error: Unknown option '%s'.\n", argv[1]);
         usage();
     }
 
-    if (argc < 3) {
-        fprintf(stderr, "Erreur : Aucune commande spécifiée à exécuter.\n");
+    if (argc < 3)
+    {
+        fprintf(stderr, "Error: No command specified to execute.\n");
         usage();
     }
 
-    char *stack = malloc(STACK_SIZE);    
-    if (!stack) {
-        fprintf(stderr, "Erreur d'allocation mémoire (malloc).\n");
-        exit(1);
+    char *stack = malloc(STACK_SIZE);
+    if (!stack)
+    {
+        error_exit("Memory allocation failed for stack");
     }
 
-    char *stackTop = stack + STACK_SIZE;  /* Assume stack grows downwards */
-    
+    char *stackTop = stack + STACK_SIZE;
+
     struct args arguments = {
         .argc = argc,
-        .argv = argv
-    };
+        .argv = argv};
 
-    // Create the pipe for parent-child synchronization
-    if (pipe(arguments.pipe_fd) == -1) {
-        perror("pipe");
-        free(stack);
-        exit(1);
+    if (pipe(arguments.pipe_fd) == -1)
+    {
+        error_exit("Failed to create pipe");
     }
 
-    // Create the child in new namespaces.
     int pid = clone(child, stackTop, CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWUTS | SIGCHLD, &arguments);
-    if (pid == -1) {
-        fprintf(stderr, "Erreur clone : %s\n", strerror(errno));
-        free(stack);
-        exit(1);
+    if (pid == -1)
+    {
+        error_exit("Failed to create child process using clone");
     }
 
     write_uid_gid_mappings(pid);
 
-    // Close the write end of the pipe to signal the child process it can proceed
     close(arguments.pipe_fd[1]);
 
     int status;
-    if (waitpid(pid, &status, 0) == -1) {
-        fprintf(stderr, "Erreur waitpid : %s\n", strerror(errno));
-        free(stack);
-        exit(1);
+    if (waitpid(pid, &status, 0) == -1)
+    {
+        error_exit("Failed to wait for child process");
     }
+
+    remove_cgroup_directory(pid);
 
     free(stack);
 
-    if (WIFEXITED(status)) {
+    if (WIFEXITED(status))
+    {
         return WEXITSTATUS(status);
-    } else {
-        fprintf(stderr, "Erreur : le processus enfant n'a pas terminé normalement.\n");
-        return 1;
+    }
+    else
+    {
+        error_exit("Child process did not exit normally");
     }
 }
